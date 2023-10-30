@@ -2,17 +2,12 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 import cv2
-from segment_anything import sam_model_registry, SamPredictor, SamAutomaticMaskGenerator
+from segment_anything_hq import sam_model_registry, SamPredictor, SamAutomaticMaskGenerator
 import os
 import supervision as sv
 from ultralytics import YOLO
-import sys
 
-if len(sys.argv) != 2:
-    print("Usage: python script_name.py path_to_image")
-    sys.exit(1)
-
-IMAGE_PATH = sys.argv[1]
+IMAGE_PATH = "./split_frames/top_right.jpg"
 
 def show_mask(mask, ax, random_color=False):
     if random_color:
@@ -29,10 +24,10 @@ def show_box(box, ax):
     ax.add_patch(plt.Rectangle((x0, y0), w, h, edgecolor='green', facecolor=(0,0,0,0), lw=2))
 
 if __name__ == "__main__":
-    model = YOLO("runs/detect/train14/weights/best.pt")
-    results = model(IMAGE_PATH)
+    model = YOLO("runs/detect/train13/weights/best.pt")
+    results = model("split_frames/top_right.jpg")
 
-    sam_checkpoint = "./pretrained_models/sam_vit_h_4b8939.pth"
+    sam_checkpoint = "./pretrained_models/sam_hq_vit_h.pth"
     model_type = "vit_h"
     device = "cuda"
     sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
@@ -59,4 +54,3 @@ if __name__ == "__main__":
             show_box(box, plt.gca())
             plt.axis('off')
             plt.savefig(f'output_mask_{i}_{j}.png', dpi=300)
-
