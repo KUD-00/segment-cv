@@ -7,6 +7,7 @@ pkgs.mkShell {
       ps.imageio
       ps.setuptools
       ps.pillow
+      ps.opencv4
     ]))
 
     pkgs.curl
