@@ -30,3 +30,7 @@ track.py
 train.py
 - train models
 - Usage: `python3 train.py <model path> <yaml path> <epoches>`
+
+extract-car-image.pyt
+- extract all single car images from a whole image
+- Usage: `python3 extract-car-image.py <model path> <image path> <output dir path> <scale factor>`
