@@ -1,16 +1,19 @@
+import argparse
 from ultralytics import YOLO
 
-model = YOLO('runs/detect/train14/weights/best.pt')  # Load a custom trained model
+parser = argparse.ArgumentParser(description='Track objects in a video using a YOLO model.')
+parser.add_argument('model_path', type=str, help='Path to the YOLO model file.')
+parser.add_argument('source_video', type=str, help='Path to the source video file.')
+args = parser.parse_args()
 
-# Perform tracking with the model
-results = model.track(source="./output_video.mp4", show=True, conf=0.1, tracker="bytetrack.yaml", save=True)  # Tracking with default tracker
+model = YOLO(args.model_path)
+
+results = model.track(source=args.source_video, show=True, conf=0.1, tracker="bytetrack.yaml", save=True)
 
 print(results[0].boxes)
 
-# 创建一个空字典来存储 ID 和对应的中心坐标数组
 id_to_centers = {}
 
-# 遍历结果集
 with open("result_list.txt", "w") as file:
     for result in results:
         for box in result.boxes:

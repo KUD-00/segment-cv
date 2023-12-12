@@ -8,11 +8,12 @@ import supervision as sv
 from ultralytics import YOLO
 import sys
 
-if len(sys.argv) != 2:
-    print("Usage: python script_name.py path_to_image")
+if len(sys.argv) != 3:
+    print("Usage: python script_name.py path_to_image path_to_model")
     sys.exit(1)
 
 IMAGE_PATH = sys.argv[1]
+MODEL_PATH = sys.argv[2]
 
 def show_mask(mask, ax, random_color=False):
     if random_color:
@@ -29,6 +30,6 @@ def show_box(box, ax):
     ax.add_patch(plt.Rectangle((x0, y0), w, h, edgecolor='green', facecolor=(0,0,0,0), lw=2))
 
 if __name__ == "__main__":
-    model = YOLO("runs/detect/train14/weights/best.pt")
+    model = YOLO(MODEL_PATH)
     model.predict(IMAGE_PATH, save=True, hide_labels=True)
 

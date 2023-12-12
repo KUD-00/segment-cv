@@ -23,4 +23,4 @@ def process_video(input_path, output_path):
     final_clip.write_videofile(output_path, codec='libx264')
 
 # 使用示例
-process_video('/media/dl-station/disk2/qi/空撮/003.mp4', 'output_video.mp4')
+process_video('/media/dl-station/disk2/qi/空撮/354.mp4', 'output_video.mp4')
