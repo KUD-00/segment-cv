@@ -46,7 +46,7 @@ def is_video_file(file_name):
 
 if __name__ == "__main__":
     if len(sys.argv) != 4:
-        print("Usage: python extract_frame.py <video_path>/<video_folder_path> <time_str> <output_path>")
+        print("Usage: python get-frame.py <video_path>/<video_folder_path> <time_str> <output_path>")
         sys.exit(1)
 
     video_path = sys.argv[1]

@@ -4,6 +4,13 @@ this repo provides
 - python scripts
 - .pt model
 
+## showcase
+not uploaded
+
+## models
+- car detection model: not uploaded
+- large vehicle head and body detection model: not uploaded
+
 ## install dependencies
 - use requirement.txt ( only way now )
 - use shell.nix( without ultralytics package, can't do models things )
