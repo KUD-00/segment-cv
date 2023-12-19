@@ -8,7 +8,7 @@ args = parser.parse_args()
 
 model = YOLO(args.model_path)
 
-results = model.track(source=args.source_video, show=True, conf=0.1, tracker="bytetrack.yaml", save=True)
+results = model.track(source=args.source_video, show=True, conf=0.01, tracker="bytetrack.yaml", save=True)
 
 print(results[0].boxes)
 

@@ -5,10 +5,12 @@ this repo provides
 - .pt model
 
 ## showcase
-not uploaded
+![track](track.png)
+![detect](detect.png)
+![segmentation](segmentation.png)
 
 ## models
-- car detection model: not uploaded
+- car detection model: [link](https://drive.google.com/file/d/19w6EodGfI4N5umUrCnogOe-czuRiLX-g/view?usp=drive_link)
 - large vehicle head and body detection model: not uploaded
 
 ## install dependencies
