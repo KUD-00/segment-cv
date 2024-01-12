@@ -29,7 +29,7 @@ def show_box(box, ax):
     ax.add_patch(plt.Rectangle((x0, y0), w, h, edgecolor='green', facecolor=(0,0,0,0), lw=2))
 
 if __name__ == "__main__":
-    model = YOLO("runs/detect/train18/weights/best.pt")
+    model = YOLO("runs/detect/train20/weights/best.pt")
     results = model(IMAGE_PATH)
 
     sam_checkpoint = "./pretrained_models/sam_vit_h_4b8939.pth"

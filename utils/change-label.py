@@ -22,5 +22,5 @@ def process_directory(dir_path):
                 transform_file_content(os.path.join(root, file))
 
 if __name__ == '__main__':
-    dir_path = "/media/dl-station/disk2/qi/v4/valid/labels"
+    dir_path = "/media/dl-station/disk2/qi/v5/train/labels"
     process_directory(dir_path)
