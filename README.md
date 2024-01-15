@@ -9,6 +9,7 @@ this repo provides
 ![detect](showcase/detect.png)
 ![segmentation](showcase/segmentation.png)
 ![trajectory](showcase/trajectory.jpg)
+![segment-trajectory](showcase/segment-trajectory.png)
 
 ## models
 - car detection model: [link](https://drive.google.com/file/d/19w6EodGfI4N5umUrCnogOe-czuRiLX-g/view?usp=drive_link)
