@@ -3,7 +3,6 @@ import torch
 import matplotlib.pyplot as plt
 import cv2
 from segment_anything import sam_model_registry, SamPredictor
-import os
 import argparse
 import random
 
@@ -24,11 +23,10 @@ def click_event(event, x, y, flags, params):
 def random_color():
     return np.array([random.randint(0, 255) / 255 for _ in range(3)] + [0.6])
 
-# 更新后的 show_mask 函数以支持随机颜色
-def show_mask(mask, ax, color=np.array([30/255, 144/255, 255/255, 0.6])):
+def show_mask(mask, ax, color=np.array([30/255, 144/255, 255/255, 0.6]), alpha=0.6):
     h, w = mask.shape[-2:]
     mask_image = mask.reshape(h, w, 1) * color.reshape(1, 1, -1)
-    ax.imshow(mask_image, alpha=0.6)  # 使用alpha通道以增加透明度，使背景可见
+    ax.imshow(mask_image, alpha=alpha)
 
 def read_bboxes(file_name, target_id):
     bboxes = []
@@ -50,21 +48,23 @@ if __name__ == "__main__":
     parser.add_argument('object_id', type=float, nargs='?', default=None, help='ID of the object to extract bounding boxes for.')
     args = parser.parse_args()
 
-    scale_percent = 50  # 初始化全局变量
-    clicks = []  # 初始化点击列表
+    scale_percent = 50
+    clicks = []
 
     video = cv2.VideoCapture(args.video_path)
     success, first_frame = video.read()
     if not success:
         print("Error reading video.")
         sys.exit(1)
+    print("hello")
 
     resized_first_frame = resize_image(first_frame, scale_percent)
     cv2.imshow('First Frame - Click 4 Points', resized_first_frame)
     cv2.setMouseCallback('First Frame - Click 4 Points', click_event)
     cv2.waitKey(0)
 
-    # Setup model and device
+    print("hello")
+
     sam_checkpoint = "./pretrained_models/sam_vit_h_4b8939.pth"
     model_type = "vit_h"
     device = "cuda"
@@ -72,17 +72,20 @@ if __name__ == "__main__":
     sam.to(device=device)
     predictor = SamPredictor(sam)
 
-    fig, axs = plt.subplots(1, 2, figsize=(20, 10))
-    axs[0].imshow(cv2.cvtColor(first_frame, cv2.COLOR_BGR2RGB))
+    fig, axs = plt.subplots(1, 3, figsize=(30, 10))  # Adjust for three types of masks.
     axs[0].axis('off')
-    axs[1].imshow(cv2.cvtColor(first_frame, cv2.COLOR_BGR2RGB))  # 确保第二个图像也有背景
     axs[1].axis('off')
+    axs[2].axis('off')
+
+    # Placeholder for white-base image with masks for the third subplot.
+    white_base = np.ones_like(first_frame) * 255
 
     bboxes = read_bboxes(args.file_path, args.object_id)
     if bboxes:
         bbox = bboxes[0]
         length = max(abs(bbox[2] - bbox[0]), abs(bbox[3] - bbox[1]))
 
+    segmentation_array = np.zeros((100, 100), dtype=int)
     counter = 0
     while success:
         success, frame = video.read()
@@ -96,15 +99,19 @@ if __name__ == "__main__":
             np_box = np.array(box)
             masks, scores, logits = predictor.predict(box=np_box, multimask_output=False)
             for mask in masks:
-                color = random_color()  # 为每个掩码分配随机颜色
-                show_mask(mask, axs[0])  # 在原始掩码图中显示掩码
-                show_mask(mask, axs[1], color=color)  # 在彩色掩码图中显示掩码
+                color = random_color()
+                show_mask(mask, axs[0], np.array([0, 0, 1, 1]), 1)  # Blue mask with no transparency.
+                show_mask(mask, axs[1], color, 1)  # Colorful mask with no transparency.
+                # Apply mask to the white_base for third subplot.
+                mask_resized = cv2.resize(mask.astype(np.uint8), (first_frame.shape[1], first_frame.shape[0]))
+                white_base[mask_resized > 0] = np.array(color[:3] * 255, dtype=np.uint8)
 
         counter += 1
 
-    filename_base = args.file_path.rsplit('-', 1)[0]
-    normal_output_filename = f'{filename_base}-{int(length)}-segmentation.png'
-    colorful_output_filename = f'{filename_base}-{int(length)}-colorful-segmentation.png'
+    # After processing all masks, show the white_base image with applied masks in the third subplot.
+    axs[2].imshow(white_base)
 
-    plt.savefig(normal_output_filename, dpi=300)
-    plt.savefig(colorful_output_filename, dpi=300)
+    # Save the original and colorful masks into one image.
+    plt.savefig(f'{args.file_path}-segmentation-and-colorful.png', dpi=300)
+
+    # If needed, separate saving logic for individual images can be added here.

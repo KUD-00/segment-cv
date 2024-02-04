@@ -24,11 +24,10 @@ def click_event(event, x, y, flags, params):
 def random_color():
     return np.array([random.randint(0, 255) / 255 for _ in range(3)] + [0.6])
 
-# 更新后的 show_mask 函数以支持随机颜色
-def show_mask(mask, ax, color=np.array([30/255, 144/255, 255/255, 0.6])):
+def show_mask(mask, ax, color=np.array([30/255, 144/255, 255/255, 0.6]), alpha=0.6):
     h, w = mask.shape[-2:]
     mask_image = mask.reshape(h, w, 1) * color.reshape(1, 1, -1)
-    ax.imshow(mask_image, alpha=0.6)  # 使用alpha通道以增加透明度，使背景可见
+    ax.imshow(mask_image, alpha=alpha)
 
 def read_bboxes(file_name, target_id):
     bboxes = []
@@ -63,6 +62,8 @@ if __name__ == "__main__":
     cv2.imshow('First Frame - Click 4 Points', resized_first_frame)
     cv2.setMouseCallback('First Frame - Click 4 Points', click_event)
     cv2.waitKey(0)
+    print("hello")
+
 
     # Setup model and device
     sam_checkpoint = "./pretrained_models/sam_vit_h_4b8939.pth"
@@ -72,16 +73,25 @@ if __name__ == "__main__":
     sam.to(device=device)
     predictor = SamPredictor(sam)
 
-    fig, axs = plt.subplots(1, 2, figsize=(20, 10))
+    print("hello")
+
+    fig, axs = plt.subplots(1, 3, figsize=(30, 10))  # 三个subplot: 原始掩码、彩色掩码、检测数组
     axs[0].imshow(cv2.cvtColor(first_frame, cv2.COLOR_BGR2RGB))
     axs[0].axis('off')
-    axs[1].imshow(cv2.cvtColor(first_frame, cv2.COLOR_BGR2RGB))  # 确保第二个图像也有背景
+    axs[1].imshow(cv2.cvtColor(first_frame, cv2.COLOR_BGR2RGB))
     axs[1].axis('off')
+    # 创建全白底图用于掩码覆盖检测
+    white_base = np.ones_like(first_frame) * 255
+    axs[2].imshow(white_base)
+    axs[2].axis('off')
 
     bboxes = read_bboxes(args.file_path, args.object_id)
     if bboxes:
         bbox = bboxes[0]
         length = max(abs(bbox[2] - bbox[0]), abs(bbox[3] - bbox[1]))
+
+    # 用于存储每个小区域是否被覆盖的二维数组
+    segmentation_array = np.zeros((100, 100), dtype=int)
 
     counter = 0
     while success:
@@ -97,14 +107,33 @@ if __name__ == "__main__":
             masks, scores, logits = predictor.predict(box=np_box, multimask_output=False)
             for mask in masks:
                 color = random_color()  # 为每个掩码分配随机颜色
-                show_mask(mask, axs[0])  # 在原始掩码图中显示掩码
-                show_mask(mask, axs[1], color=color)  # 在彩色掩码图中显示掩码
+                show_mask(mask, axs[0], alpha=1)  # 在原始掩码图中显示掩码，无透明度
+                show_mask(mask, axs[1], color=color, alpha=1)  # 在彩色掩码图中显示掩码，无透明度
+                # 在全白底图上绘制掩码以检测覆盖区域，这里直接使用黑色以简化检测逻辑
+                show_mask(mask, axs[2], color=np.array([0, 0, 0, 1]), alpha=1)
 
         counter += 1
 
-    filename_base = args.file_path.rsplit('-', 1)[0]
-    normal_output_filename = f'{filename_base}-{int(length)}-segmentation.png'
-    colorful_output_filename = f'{filename_base}-{int(length)}-colorful-segmentation.png'
+    plt.savefig(f'{args.file_path}-original.png', dpi=300)
+    plt.savefig(f'{args.file_path}-colorful.png', dpi=300)
 
-    plt.savefig(normal_output_filename, dpi=300)
-    plt.savefig(colorful_output_filename, dpi=300)
+    # 转换 axs[2] 中的图像，以使用 OpenCV 分析
+    axs[2].figure.canvas.draw()  # 更新画布
+    img = np.frombuffer(axs[2].figure.canvas.tostring_rgb(), dtype=np.uint8)
+    img = img.reshape(axs[2].figure.canvas.get_width_height()[::-1] + (3,))
+    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+    # 分析图像并更新 segmentation_array
+    cell_width = img.shape[1] // 100
+    cell_height = img.shape[0] // 100
+    for i in range(100):
+        for j in range(100):
+            x_start = i * cell_width
+            y_start = j * cell_height
+            cell = img[y_start:y_start+cell_height, x_start:x_start+cell_width]
+            if np.any(cell != 255):  # 如果单元格内有非白色像素
+                segmentation_array[j, i] = 1
+
+    # 保存 segmentation_array 到文本文件
+    array_output_filename = f'{args.file_path}-{int(length)}-segmentation-array.txt'
+    np.savetxt(array_output_filename, segmentation_array, fmt='%d')

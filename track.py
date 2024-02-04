@@ -1,38 +1,40 @@
 import argparse
+import os
 from ultralytics import YOLO
 
+# 解析命令行参数
 parser = argparse.ArgumentParser(description='Track objects in a video using a YOLO model.')
 parser.add_argument('model_path', type=str, help='Path to the YOLO model file.')
 parser.add_argument('source_video', type=str, help='Path to the source video file.')
 args = parser.parse_args()
 
+# 初始化并使用 YOLO 模型
 model = YOLO(args.model_path)
-
 results = model.track(source=args.source_video, conf=0.2, show=True, tracker="bytetrack.yaml", save=True)
-
 print(results[0].boxes)
 
-id_to_centers = {}
-bboxes_data = []
+# 从视频路径中提取视频名称
+video_name = os.path.splitext(os.path.basename(args.source_video))[0]
 
-with open("centers.txt", "w") as centers_file, open("bboxes.txt", "w") as bboxes_file:
+# 构造输出文件名
+bboxes_filename = f"{video_name}-bboxes.txt"
+
+# 写入边界框数据
+with open(bboxes_filename, "w") as bboxes_file:
     for result in results:
         for box in result.boxes:
             box_id = box.id.item()
-
-            x_center, y_center = box.xywh[0][0].item(), box.xywh[0][1].item()
             bbox = box.xyxy[0].tolist()
+            bboxes_file.write(f"ID: {box_id}, BBox: {bbox}\n")
 
-            if box_id in id_to_centers:
-                id_to_centers[box_id].append((x_center, y_center))
-            else:
-                id_to_centers[box_id] = [(x_center, y_center)]
+# 读取用户输入
+target_id = input("Please enter the target ID: ")
+direction = input("Please enter the direction: ")
 
-            bboxes_data.append((box_id, bbox))
+# 构造新的文件名
+new_bboxes_filename = f"{video_name}-{target_id}-{direction}-bboxes.txt"
 
-    for box_id, centers in id_to_centers.items():
-        centers_file.write(f"ID: {box_id}, Centers: {centers}\n")
+# 重命名边界框文件
+os.rename(bboxes_filename, new_bboxes_filename)
 
-    for box_id, bbox in bboxes_data:
-        bboxes_file.write(f"ID: {box_id}, BBox: {bbox}\n")
-
+print(f"Renamed bbox file to {new_bboxes_filename}")
