@@ -6,29 +6,15 @@ from segment_anything import sam_model_registry, SamPredictor
 import os
 import argparse
 import random
-
-def resize_image(image, scale_percent=50):
-    width = int(image.shape[1] * scale_percent / 100)
-    height = int(image.shape[0] * scale_percent / 100)
-    dim = (width, height)
-    return cv2.resize(image, dim, interpolation=cv2.INTER_AREA)
-
-def click_event(event, x, y, flags, params):
-    if event == cv2.EVENT_LBUTTONDOWN:
-        # Scale back the coordinates to the original size
-        scaled_x, scaled_y = int(x / scale_percent * 100), int(y / scale_percent * 100)
-        clicks.append((scaled_x, scaled_y))
-        if len(clicks) == 4:
-            cv2.destroyAllWindows()
+import json
 
 def random_color():
     return np.array([random.randint(0, 255) / 255 for _ in range(3)] + [0.6])
 
-# 更新后的 show_mask 函数以支持随机颜色
-def show_mask(mask, ax, color=np.array([30/255, 144/255, 255/255, 0.6])):
+def show_mask(mask, ax, color=np.array([30/255, 144/255, 255/255, 0.6]), alpha=0.6):
     h, w = mask.shape[-2:]
     mask_image = mask.reshape(h, w, 1) * color.reshape(1, 1, -1)
-    ax.imshow(mask_image, alpha=0.6)  # 使用alpha通道以增加透明度，使背景可见
+    ax.imshow(mask_image, alpha=alpha)
 
 def read_bboxes(file_name, target_id):
     bboxes = []
@@ -43,26 +29,36 @@ def read_bboxes(file_name, target_id):
                     bboxes.append(bbox)
     return bboxes
 
+def clip_image(image, points):
+    x_coords = [p[0] for p in points]
+    y_coords = [p[1] for p in points]
+    x1, y1, x2, y2 = min(x_coords), min(y_coords), max(x_coords), max(y_coords)
+
+    return image[y1:y2, x1:x2]
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Extract bounding boxes and show masks with random colors.')
     parser.add_argument('file_path', type=str, help='Path to the file containing bounding boxes.')
     parser.add_argument('video_path', type=str, help='Path to the video file.')
-    parser.add_argument('object_id', type=float, nargs='?', default=None, help='ID of the object to extract bounding boxes for.')
     args = parser.parse_args()
+    
+    video_dir = os.path.dirname(args.video_path)
 
-    scale_percent = 50  # 初始化全局变量
-    clicks = []  # 初始化点击列表
+    json_filename = os.path.splitext(args.video_path)[0] + ".json"
+    if os.path.exists(json_filename):
+        with open(json_filename, 'r') as f:
+            data = json.load(f)
+            clicks = data.get("clicks", [])
+            target_id = data.get("target_id")
+    else:
+        print("JSON file not found.")
+        sys.exit(1)
 
     video = cv2.VideoCapture(args.video_path)
     success, first_frame = video.read()
     if not success:
         print("Error reading video.")
         sys.exit(1)
-
-    resized_first_frame = resize_image(first_frame, scale_percent)
-    cv2.imshow('First Frame - Click 4 Points', resized_first_frame)
-    cv2.setMouseCallback('First Frame - Click 4 Points', click_event)
-    cv2.waitKey(0)
 
     # Setup model and device
     sam_checkpoint = "./pretrained_models/sam_vit_h_4b8939.pth"
@@ -72,16 +68,21 @@ if __name__ == "__main__":
     sam.to(device=device)
     predictor = SamPredictor(sam)
 
-    fig, axs = plt.subplots(1, 2, figsize=(20, 10))
-    axs[0].imshow(cv2.cvtColor(first_frame, cv2.COLOR_BGR2RGB))
-    axs[0].axis('off')
-    axs[1].imshow(cv2.cvtColor(first_frame, cv2.COLOR_BGR2RGB))  # 确保第二个图像也有背景
-    axs[1].axis('off')
+    fig1, ax1 = plt.subplots() 
+    ax1.imshow(cv2.cvtColor(first_frame, cv2.COLOR_BGR2RGB))
+    ax1.axis('off')
 
-    bboxes = read_bboxes(args.file_path, args.object_id)
+    fig2, ax2 = plt.subplots()
+    white_base = np.ones_like(first_frame) * 255
+    ax2.imshow(white_base)
+    ax2.axis('off')
+
+    bboxes = read_bboxes(args.file_path, target_id)
     if bboxes:
         bbox = bboxes[0]
         length = max(abs(bbox[2] - bbox[0]), abs(bbox[3] - bbox[1]))
+
+    segmentation_array = np.zeros((100, 100), dtype=int)
 
     counter = 0
     while success:
@@ -96,15 +97,38 @@ if __name__ == "__main__":
             np_box = np.array(box)
             masks, scores, logits = predictor.predict(box=np_box, multimask_output=False)
             for mask in masks:
-                color = random_color()  # 为每个掩码分配随机颜色
-                show_mask(mask, axs[0])  # 在原始掩码图中显示掩码
-                show_mask(mask, axs[1], color=color)  # 在彩色掩码图中显示掩码
+                color = random_color()
+                show_mask(mask, ax1, alpha=1)
+                show_mask(mask, ax2, color=np.array([0, 0, 0, 1]), alpha=1)
 
         counter += 1
 
-    filename_base = args.file_path.rsplit('-', 1)[0]
-    normal_output_filename = f'{filename_base}-{int(length)}-segmentation.png'
-    colorful_output_filename = f'{filename_base}-{int(length)}-colorful-segmentation.png'
+    fig1.savefig(os.path.join(video_dir, 'original.png'), dpi=300, bbox_inches='tight', pad_inches=0)
+    fig2.savefig(os.path.join(video_dir, 'only-mask.png'), dpi=300, bbox_inches='tight', pad_inches=0)
 
-    plt.savefig(normal_output_filename, dpi=300)
-    plt.savefig(colorful_output_filename, dpi=300)
+    image = cv2.imread(os.path.join(video_dir, 'only-mask.png'))
+    clipped_image = clip_image(image, clicks)
+    clipped_image_path = os.path.join(video_dir, f"{os.path.splitext(os.path.basename(args.video_path))[0]}-clipped.png")
+    cv2.imwrite(clipped_image_path, clipped_image)
+    
+    fig3, ax3 = plt.subplots() 
+    ax3.imshow(cv2.cvtColor(clipped_image, cv2.COLOR_BGR2RGB))
+    ax3.axis('off')
+
+    ax3.figure.canvas.draw()
+    img = np.frombuffer(ax3.figure.canvas.tostring_rgb(), dtype=np.uint8)
+    img = img.reshape(ax3.figure.canvas.get_width_height()[::-1] + (3,))
+    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+    cell_width = img.shape[1] // 100
+    cell_height = img.shape[0] // 100
+    for i in range(100):
+        for j in range(100):
+            x_start = i * cell_width
+            y_start = j * cell_height
+            cell = img[y_start:y_start+cell_height, x_start:x_start+cell_width]
+            if np.any(cell != 255):
+                segmentation_array[j, i] = 1
+
+    array_output_filename = os.path.join(video_dir, f'{os.path.splitext(os.path.basename(args.video_path))[0]}-segmentation-array.txt')
+    np.savetxt(array_output_filename, segmentation_array, fmt='%d')
