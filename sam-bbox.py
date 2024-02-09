@@ -1,20 +1,24 @@
-import numpy as np
-import torch
-import matplotlib.pyplot as plt
 import cv2
-from segment_anything import sam_model_registry, SamPredictor
+import numpy as np
+import sys
 import os
 import argparse
-import random
 import json
+from segment_anything import sam_model_registry, SamPredictor
+import random
 
 def random_color():
-    return np.array([random.randint(0, 255) / 255 for _ in range(3)] + [0.6])
+    return [random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)]
 
-def show_mask(mask, ax, color=np.array([30/255, 144/255, 255/255, 0.6]), alpha=0.6):
-    h, w = mask.shape[-2:]
-    mask_image = mask.reshape(h, w, 1) * color.reshape(1, 1, -1)
-    ax.imshow(mask_image, alpha=alpha)
+def apply_mask(image, mask):
+    color = random_color()
+    for i in range(3):
+        image[:, :, i] = np.where(mask == 1, image[:, :, i] * 0.4 + color[i] * 0.6, image[:, :, i])
+    return image
+
+def draw_masks_on_blank(blank_image, mask):
+    color = random_color()
+    return apply_mask(blank_image, mask)
 
 def read_bboxes(file_name, target_id):
     bboxes = []
@@ -23,10 +27,9 @@ def read_bboxes(file_name, target_id):
             if line.startswith(f"ID: {target_id}"):
                 start = line.find('[')
                 end = line.find(']')
-                if start != -1 and end != -1:
-                    bbox_str = line[start+1:end]
-                    bbox = [float(x.strip()) for x in bbox_str.split(',')]
-                    bboxes.append(bbox)
+                bbox_str = line[start+1:end]
+                bbox = np.array([float(x.strip()) for x in bbox_str.split(',')], dtype=np.int32).reshape((-1, 1, 2))
+                bboxes.append(bbox)
     return bboxes
 
 def clip_image(image, points):
@@ -41,9 +44,8 @@ if __name__ == "__main__":
     parser.add_argument('file_path', type=str, help='Path to the file containing bounding boxes.')
     parser.add_argument('video_path', type=str, help='Path to the video file.')
     args = parser.parse_args()
-    
-    video_dir = os.path.dirname(args.video_path)
 
+    video_dir = os.path.dirname(args.video_path)
     json_filename = os.path.splitext(args.video_path)[0] + ".json"
     if os.path.exists(json_filename):
         with open(json_filename, 'r') as f:
@@ -60,7 +62,6 @@ if __name__ == "__main__":
         print("Error reading video.")
         sys.exit(1)
 
-    # Setup model and device
     sam_checkpoint = "./pretrained_models/sam_vit_h_4b8939.pth"
     model_type = "vit_h"
     device = "cuda"
@@ -68,21 +69,10 @@ if __name__ == "__main__":
     sam.to(device=device)
     predictor = SamPredictor(sam)
 
-    fig1, ax1 = plt.subplots() 
-    ax1.imshow(cv2.cvtColor(first_frame, cv2.COLOR_BGR2RGB))
-    ax1.axis('off')
-
-    fig2, ax2 = plt.subplots()
-    white_base = np.ones_like(first_frame) * 255
-    ax2.imshow(white_base)
-    ax2.axis('off')
-
     bboxes = read_bboxes(args.file_path, target_id)
-    if bboxes:
-        bbox = bboxes[0]
-        length = max(abs(bbox[2] - bbox[0]), abs(bbox[3] - bbox[1]))
 
-    segmentation_array = np.zeros((100, 100), dtype=int)
+    first_frame_with_all_masks = first_frame.copy()
+    blank_with_all_masks = np.zeros((first_frame.shape[0], first_frame.shape[1], 3), dtype=np.uint8)
 
     counter = 0
     while success:
@@ -96,39 +86,32 @@ if __name__ == "__main__":
             predictor.set_image(image_rgb)
             np_box = np.array(box)
             masks, scores, logits = predictor.predict(box=np_box, multimask_output=False)
-            for mask in masks:
-                color = random_color()
-                show_mask(mask, ax1, alpha=1)
-                show_mask(mask, ax2, color=np.array([0, 0, 0, 1]), alpha=1)
+            for m in masks:
+                mask_single = (m > 0).astype(np.uint8)
+                first_frame_with_all_masks = apply_mask(first_frame_with_all_masks, mask_single)
+                blank_with_all_masks = draw_masks_on_blank(blank_with_all_masks, mask_single)
 
         counter += 1
 
-    fig1.savefig(os.path.join(video_dir, 'original.png'), dpi=300, bbox_inches='tight', pad_inches=0)
-    fig2.savefig(os.path.join(video_dir, 'only-mask.png'), dpi=300, bbox_inches='tight', pad_inches=0)
+    cv2.imwrite(os.path.join(video_dir, 'original_with_masks.png'), first_frame_with_all_masks)
+    cv2.imwrite(os.path.join(video_dir, 'only_masks.png'), blank_with_all_masks)
 
-    image = cv2.imread(os.path.join(video_dir, 'only-mask.png'))
+    mask_image_path = os.path.join(video_dir, 'only_masks.png')
+    image = cv2.imread(mask_image_path)
+    if image is None:
+        print(f"Failed to read image from {mask_image_path}")
+        sys.exit(1)
+
+    # 裁剪图像
     clipped_image = clip_image(image, clicks)
     clipped_image_path = os.path.join(video_dir, f"{os.path.splitext(os.path.basename(args.video_path))[0]}-clipped.png")
     cv2.imwrite(clipped_image_path, clipped_image)
+
+    # 创建分段数组
+    segmentation_array = np.zeros((100, 100), dtype=int)
+    scaled_image = cv2.resize(clipped_image, (100, 100), interpolation=cv2.INTER_NEAREST)
+    segmentation_array[(scaled_image[:, :, 0] != 0) | (scaled_image[:, :, 1] != 0) | (scaled_image[:, :, 2] != 0)] = 1
     
-    fig3, ax3 = plt.subplots() 
-    ax3.imshow(cv2.cvtColor(clipped_image, cv2.COLOR_BGR2RGB))
-    ax3.axis('off')
-
-    ax3.figure.canvas.draw()
-    img = np.frombuffer(ax3.figure.canvas.tostring_rgb(), dtype=np.uint8)
-    img = img.reshape(ax3.figure.canvas.get_width_height()[::-1] + (3,))
-    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-
-    cell_width = img.shape[1] // 100
-    cell_height = img.shape[0] // 100
-    for i in range(100):
-        for j in range(100):
-            x_start = i * cell_width
-            y_start = j * cell_height
-            cell = img[y_start:y_start+cell_height, x_start:x_start+cell_width]
-            if np.any(cell != 255):
-                segmentation_array[j, i] = 1
-
+    # 保存分段数组到文本文件
     array_output_filename = os.path.join(video_dir, f'{os.path.splitext(os.path.basename(args.video_path))[0]}-segmentation-array.txt')
     np.savetxt(array_output_filename, segmentation_array, fmt='%d')

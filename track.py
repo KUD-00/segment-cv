@@ -9,7 +9,7 @@ parser.add_argument('source_video', type=str, help='Path to the source video fil
 args = parser.parse_args()
 
 model = YOLO(args.model_path)
-results = model.track(source=args.source_video, conf=0.2, show=True, tracker="bytetrack.yaml", save=False)
+results = model.track(source=args.source_video, conf=0.2, show=True, tracker="bytetrack.yaml", save=True)
 
 video_dir = os.path.dirname(args.source_video)
 video_name = os.path.splitext(os.path.basename(args.source_video))[0]
